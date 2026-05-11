@@ -554,7 +554,10 @@
 <div id="debug">
   <div class="debug-header">
     <span>datalayer events</span>
-    <span class="debug-close" onclick="toggleDebug()">✕</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span onclick="resetWebEcid()" style="cursor:pointer;color:#FF4C00;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;" title="Clear Adobe cookies + localStorage and reload">↺ reset ECID</span>
+      <span class="debug-close" onclick="toggleDebug()">✕</span>
+    </div>
   </div>
   <div id="debug-log"></div>
 </div>
@@ -605,6 +608,68 @@ function updateEcidUI(ecid) {
   document.getElementById('ecid-display').textContent = ecid;
   document.getElementById('nav-ecid-text').textContent = ecid.substring(0,20) + '…';
   document.getElementById('nav-ecid').classList.add('ready');
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESET WEB ECID
+   Cancella tutti i cookie e le voci localStorage legate ad
+   Adobe Web SDK / Launch, poi ricarica la pagina.
+   Al reload alloy genera un nuovo ECID da zero.
+
+   Cookie rimossi:
+     AMCV_*          → ECID legacy (VisitorAPI / AppMeasurement)
+     s_ecid          → ECID sincrono
+     demdex          → Audience Manager ID (terza parte)
+     kndctr_*        → Cookie alloy Web SDK (ECID, cluster, consent)
+
+   localStorage rimosso:
+     Tutte le chiavi che iniziano con "com.adobe."
+     Tutte le chiavi che iniziano con "kndctr"
+   ════════════════════════════════════════════════════════════ */
+function resetWebEcid() {
+  logDebug('Resetting web ECID…');
+
+  // 1. Cancella cookie Adobe su tutti i path/domain raggiungibili
+  var cookiePatterns = ['AMCV_', 's_ecid', 'demdex', 'kndctr'];
+  document.cookie.split(';').forEach(function(c) {
+    var name = c.trim().split('=')[0];
+    if (cookiePatterns.some(function(p) { return name.indexOf(p) === 0; })) {
+      // Expire su root e sul dominio corrente
+      var base = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+      document.cookie = base;
+      document.cookie = base + ';domain=' + location.hostname;
+      document.cookie = base + ';domain=.' + location.hostname;
+      logDebug('cookie removed: ' + name);
+    }
+  });
+
+  // 2. Cancella localStorage Adobe / alloy
+  var toDelete = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && (k.indexOf('com.adobe.') === 0 || k.indexOf('kndctr') === 0)) {
+      toDelete.push(k);
+    }
+  }
+  toDelete.forEach(function(k) {
+    localStorage.removeItem(k);
+    logDebug('localStorage removed: ' + k);
+  });
+
+  // 3. Cancella sessionStorage Adobe
+  var toDeleteSS = [];
+  for (var j = 0; j < sessionStorage.length; j++) {
+    var sk = sessionStorage.key(j);
+    if (sk && (sk.indexOf('com.adobe.') === 0 || sk.indexOf('kndctr') === 0)) {
+      toDeleteSS.push(sk);
+    }
+  }
+  toDeleteSS.forEach(function(k) {
+    sessionStorage.removeItem(k);
+  });
+
+  logDebug('reloading page with new ECID…');
+  setTimeout(function() { location.reload(); }, 400);
 }
 
 /* ════════════════════════════════════════════════════════════
